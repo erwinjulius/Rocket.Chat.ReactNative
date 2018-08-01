@@ -36,9 +36,9 @@ platform :ios do
   desc "This will also make sure the profile is up to date"
   lane :beta do
     match(
-      type: "appstore",
-      git_url: "git@github.com:RocketChat/Rocket.Chat.ReactNative.FastLane.git"
+      type: "appstore"
     ) # more information: https://codesigning.guide
+    pem()
     gym(scheme: "RocketChatRN") # Build your app - more options available
     pilot
 
@@ -46,28 +46,32 @@ platform :ios do
     # You can also use other beta testing services here (run `fastlane actions`)
   end
 
-  desc "Deploy a new version to the App Store"
+  desc "Build App for release"
   lane :release do
     # match(type: "appstore")
     # snapshot
     match(
-      type: "appstore",
-      git_url: "git@github.com:RocketChat/Rocket.Chat.ReactNative.FastLane.git"
+      type: "appstore"
     ) # more information: https://codesigning.guide
-    deliver(force: true)
+    pem()
+    gym(scheme: "RocketChatRN", workspace: "RocketChatRN.xcworkspace") # Build your app - more options available
     # frameit
   end
 
-  desc "Build App"
-  lane :build do
-    # match(type: "appstore")
-    # snapshot
-    match(
-      type: "appstore",
-      git_url: "git@github.com:RocketChat/Rocket.Chat.ReactNative.FastLane.git"
-    ) # more information: https://codesigning.guide
-    gym(scheme: "RocketChatRN") # Build your app - more options available
-    # frameit
+  desc "Build App for development"
+  lane :build do |options|
+    xcodebuild(
+      workspace: "RocketChatRN.xcworkspace",
+      scheme: "RocketChatRN",
+      configuration: "Debug",
+      clean: options[:clean],
+      build: true,
+      destination: "generic/platform=iOS",
+      build_settings: {
+        "CODE_SIGNING_REQUIRED" => "NO",
+        "CODE_SIGN_IDENTITY" => ""
+      }
+    )
   end
 
   # You can define as many lanes as you want

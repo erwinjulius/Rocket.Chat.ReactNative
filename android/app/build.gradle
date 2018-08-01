@@ -90,19 +90,28 @@ def enableSeparateBuildPerCPUArchitecture = false
 def enableProguardInReleaseBuilds = false
 
 android {
-    compileSdkVersion 25
-    buildToolsVersion "25.0.1"
+    compileSdkVersion 27
+    buildToolsVersion "27.0.3"
 
     defaultConfig {
         applicationId "chat.rocket.reactnative"
-        minSdkVersion 16
-        targetSdkVersion 22
+        minSdkVersion 19
+        targetSdkVersion 27
         versionCode VERSIONCODE as Integer
-        versionName "1.1"
+        versionName "1"
         ndk {
             abiFilters "armeabi-v7a", "x86"
         }
+        missingDimensionStrategy "RNN.reactNativeVersion", "reactNative55"
+        vectorDrawables.useSupportLibrary = true
+        multiDexEnabled true
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
     signingConfigs {
         release {
             if (project.hasProperty('KEYSTORE')) {
@@ -123,9 +132,15 @@ android {
     }
     buildTypes {
         release {
+            // shrinkResources enableProguardInReleaseBuilds
+            // zipAlignEnabled enableProguardInReleaseBuilds
+            // useProguard enableProguardInReleaseBuilds
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            setProguardFiles([getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'])
             signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix ".debug"
         }
     }
     // applicationVariants are e.g. debug, release
@@ -143,16 +158,55 @@ android {
     }
 }
 
+buildscript {
+  repositories {
+    maven { url 'https://maven.fabric.io/public' }
+  }
+
+  dependencies {
+    // These docs use an open ended version so that our plugin
+    // can be updated quickly in response to Android tooling updates
+
+    // We recommend changing it to the latest version from our changelog:
+    // https://docs.fabric.io/android/changelog.html#fabric-gradle-plugin
+    classpath 'io.fabric.tools:gradle:1.+'
+  }
+}
+
+apply plugin: 'io.fabric'
+
+repositories {
+  maven { url 'https://maven.fabric.io/public' }
+}
+
 dependencies {
-    compile project(':react-native-svg')
-    compile project(':react-native-image-picker')
-    compile project(':react-native-vector-icons')
-    compile project(':react-native-fetch-blob')
-    compile project(':react-native-zeroconf')
-    compile project(':realm')
-    compile fileTree(dir: "libs", include: ["*.jar"])
-    compile "com.android.support:appcompat-v7:23.0.1"
-    compile "com.facebook.react:react-native:+"  // From node_modules
+    implementation project(':react-native-image-crop-picker')
+    implementation project(':react-native-i18n')
+    implementation project(':react-native-fabric')
+    implementation project(':react-native-audio')
+    implementation project(":reactnativekeyboardinput")
+    implementation project(':react-native-video')
+    implementation project(':react-native-svg')
+    implementation project(':react-native-vector-icons')
+    implementation project(':rn-fetch-blob')
+    implementation project(':react-native-zeroconf')
+    implementation project(':@remobile/react-native-toast')
+    implementation project(':react-native-fast-image')
+    implementation project(':realm')
+    implementation project(':react-native-navigation')
+    implementation project(':reactnativenotifications')
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    implementation "com.android.support:appcompat-v7:27.1.0"
+    implementation "com.android.support:support-v4:27.1.0"
+    implementation 'com.android.support:customtabs:27.1.0'
+    implementation 'com.android.support:design:27.1.0'
+    implementation "com.facebook.react:react-native:+"  // From node_modules
+    implementation 'com.facebook.fresco:animated-gif:1.9.0'
+    implementation 'com.facebook.fresco:animated-webp:1.9.0'
+    implementation 'com.facebook.fresco:webpsupport:1.9.0'
+    implementation('com.crashlytics.sdk.android:crashlytics:2.9.2@aar') {
+        transitive = true;
+    }
 }
 
 // Run this once to be able to run the application with BUCK

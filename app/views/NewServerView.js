@@ -1,93 +1,43 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Text, TextInput, View, StyleSheet, Dimensions } from 'react-native';
+import { Text, ScrollView, View, Keyboard } from 'react-native';
 import { connect } from 'react-redux';
+
 import { serverRequest, addServer } from '../actions/server';
 import KeyboardView from '../presentation/KeyboardView';
+import styles from './Styles';
+import scrollPersistTaps from '../utils/scrollPersistTaps';
+import Button from '../containers/Button';
+import TextInput from '../containers/TextInput';
+import Loading from '../containers/Loading';
+import LoggedView from './View';
+import I18n from '../i18n';
 
-const styles = StyleSheet.create({
-	view: {
-		flex: 1,
-		flexDirection: 'column',
-		alignItems: 'stretch',
-		backgroundColor: '#fff'
-	},
-	input: {
-		height: 40,
-		borderColor: '#aaa',
-		margin: 20,
-		padding: 5,
-		borderWidth: 0,
-		backgroundColor: '#f8f8f8'
-	},
-	text: {
-		textAlign: 'center',
-		color: '#888'
-	},
-	validateText: {
-		position: 'absolute',
-		color: 'green',
-		textAlign: 'center',
-		paddingLeft: 50,
-		paddingRight: 50,
-		width: '100%'
-	},
-	validText: {
-		color: 'green'
-	},
-	invalidText: {
-		color: 'red'
-	},
-	validatingText: {
-		color: '#aaa'
-	},
-	spaceView: {
-		flexGrow: 1
-	}
-});
 @connect(state => ({
-	validInstance: !state.server.failure,
-	validating: state.server.connecting
+	validInstance: !state.server.failure && !state.server.connecting,
+	validating: state.server.connecting,
+	addingServer: state.server.adding
 }), dispatch => ({
 	validateServer: url => dispatch(serverRequest(url)),
 	addServer: url => dispatch(addServer(url))
 }))
-export default class NewServerView extends React.Component {
+/** @extends React.Component */
+export default class NewServerView extends LoggedView {
 	static propTypes = {
+		navigator: PropTypes.object,
 		validateServer: PropTypes.func.isRequired,
 		addServer: PropTypes.func.isRequired,
 		validating: PropTypes.bool.isRequired,
 		validInstance: PropTypes.bool.isRequired,
-		navigation: PropTypes.object.isRequired
+		addingServer: PropTypes.bool.isRequired
 	}
-
-	static navigationOptions = () => ({
-		title: 'New Server Connection'
-	});
 
 	constructor(props) {
-		super(props);
+		super('NewServerView', props);
 		this.state = {
-			defaultServer: 'https://open.rocket.chat',
-			editable: true,
-			text: ''
+			defaultServer: 'https://open.rocket.chat'
 		};
-		this.adding = false;
-		this.props.validateServer(this.state.defaultServer); // Need to call because in case of submit with empty field
-	}
-
-	componentDidUpdate() {
-		if (this.adding) {
-			if (!this.props.validInstance) {
-				/* eslint-disable react/no-did-update-set-state */
-				this.setState({ editable: true });
-				this.adding = false;
-			}
-			if (this.props.validInstance && !this.props.validating) {
-				this.props.navigation.goBack();
-				this.adding = false;
-			}
-		}
+		props.validateServer(this.state.defaultServer); // Need to call because in case of submit with empty field
 	}
 
 	onChangeText = (text) => {
@@ -96,13 +46,18 @@ export default class NewServerView extends React.Component {
 	}
 
 	submit = () => {
-		this.setState({ editable: false });
-		this.adding = true;
-		this.props.addServer(this.completeUrl(this.state.text.trim() || this.state.defaultServer));
+		if (this.props.validInstance) {
+			Keyboard.dismiss();
+			this.props.addServer(this.completeUrl(this.state.text));
+		}
 	}
 
 	completeUrl = (url) => {
-		url = url.trim();
+		url = url && url.trim();
+
+		if (!url) {
+			return this.state.defaultServer;
+		}
 
 		if (/^(\w|[0-9-_]){3,}$/.test(url) &&
 				/^(htt(ps?)?)|(loca((l)?|(lh)?|(lho)?|(lhos)?|(lhost:?\d*)?)$)/.test(url) === false) {
@@ -121,13 +76,10 @@ export default class NewServerView extends React.Component {
 	}
 
 	renderValidation = () => {
-		if (!this.state.text.trim()) {
-			return null;
-		}
 		if (this.props.validating) {
 			return (
 				<Text style={[styles.validateText, styles.validatingText]}>
-					Validating {this.state.url} ...
+					{I18n.t('Validating')} {this.state.text || 'open'} ...
 				</Text>
 			);
 		}
@@ -135,41 +87,50 @@ export default class NewServerView extends React.Component {
 		if (this.props.validInstance) {
 			return (
 				<Text style={[styles.validateText, styles.validText]}>
-					{this.state.url} is a valid Rocket.Chat instance
+					{this.state.url} {I18n.t('is_a_valid_RocketChat_instance')}
 				</Text>
 			);
 		}
 		return (
 			<Text style={[styles.validateText, styles.invalidText]}>
-				{this.state.url} is not a valid Rocket.Chat instance
+				{this.state.url} {I18n.t('is_not_a_valid_RocketChat_instance')}
 			</Text>
 		);
 	}
 
 	render() {
+		const { validInstance } = this.props;
 		return (
 			<KeyboardView
-				scrollEnabled={false}
-				contentContainerStyle={[styles.view, { height: Dimensions.get('window').height }]}
+				contentContainerStyle={styles.container}
 				keyboardVerticalOffset={128}
 			>
-				<View style={styles.spaceView} />
-				<TextInput
-					ref={ref => this.inputElement = ref}
-					style={styles.input}
-					onChangeText={this.onChangeText}
-					keyboardType='url'
-					autoCorrect={false}
-					returnKeyType='done'
-					autoCapitalize='none'
-					autoFocus
-					editable={this.state.editable}
-					onSubmitEditing={this.submit}
-					placeholder={this.state.defaultServer}
-				/>
-				<View style={styles.spaceView}>
-					{this.renderValidation()}
-				</View>
+				<ScrollView {...scrollPersistTaps} contentContainerStyle={styles.containerScrollView}>
+					<View testID='new-server-view'>
+						<Text style={[styles.loginText, styles.loginTitle]}>{I18n.t('Sign_in_your_server')}</Text>
+						<TextInput
+							inputRef={e => this.input = e}
+							containerStyle={{ marginBottom: 5 }}
+							label={I18n.t('Your_server')}
+							placeholder={this.state.defaultServer}
+							returnKeyType='done'
+							onChangeText={this.onChangeText}
+							testID='new-server-view-input'
+							onSubmitEditing={this.submit}
+						/>
+						{this.renderValidation()}
+						<View style={[styles.alignItemsFlexStart, { marginTop: 20 }]}>
+							<Button
+								title={I18n.t('Connect')}
+								type='primary'
+								onPress={this.submit}
+								disabled={!validInstance}
+								testID='new-server-view-button'
+							/>
+						</View>
+						<Loading visible={this.props.addingServer} />
+					</View>
+				</ScrollView>
 			</KeyboardView>
 		);
 	}

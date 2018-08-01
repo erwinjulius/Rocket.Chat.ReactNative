@@ -13,7 +13,6 @@ export function loginRequest(credentials) {
 	};
 }
 
-
 export function registerSubmit(credentials) {
 	return {
 		type: types.LOGIN.REGISTER_SUBMIT,
@@ -30,6 +29,11 @@ export function registerSuccess(credentials) {
 	return {
 		type: types.LOGIN.REGISTER_SUCCESS,
 		credentials
+	};
+}
+export function registerIncomplete() {
+	return {
+		type: types.LOGIN.REGISTER_INCOMPLETE
 	};
 }
 
@@ -71,8 +75,14 @@ export function loginFailure(err) {
 export function setToken(user = {}) {
 	return {
 		type: types.LOGIN.SET_TOKEN,
-		token: user.token,
-		user
+		...user
+	};
+}
+
+export function restoreToken(token) {
+	return {
+		type: types.LOGIN.RESTORE_TOKEN,
+		token
 	};
 }
 
@@ -105,5 +115,39 @@ export function forgotPasswordFailure(err) {
 	return {
 		type: types.FORGOT_PASSWORD.FAILURE,
 		err
+	};
+}
+
+export function setUser(action) {
+	return {
+		// do not change this params order
+		// since we use spread operator, sometimes `type` is overriden
+		...action,
+		type: types.USER.SET
+	};
+}
+
+export function open() {
+	return {
+		type: types.LOGIN.OPEN
+	};
+}
+
+export function close() {
+	return {
+		type: types.LOGIN.CLOSE
+	};
+}
+
+export function setLoginServices(data) {
+	return {
+		type: types.LOGIN.SET_SERVICES,
+		data
+	};
+}
+
+export function removeLoginServices() {
+	return {
+		type: types.LOGIN.REMOVE_SERVICES
 	};
 }

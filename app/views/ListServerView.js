@@ -2,13 +2,16 @@ import React from 'react';
 
 import Icon from 'react-native-vector-icons/Ionicons';
 import PropTypes from 'prop-types';
-import Zeroconf from 'react-native-zeroconf';
 import { View, Text, SectionList, StyleSheet } from 'react-native';
 import { connect } from 'react-redux';
-import { setServer } from '../actions/server';
-import realm from '../lib/realm';
+
+import LoggedView from './View';
+import { selectServer } from '../actions/server';
+import database from '../lib/realm';
 import Fade from '../animations/fade';
-import Banner from '../containers/Banner';
+import Touch from '../utils/touch';
+import I18n from '../i18n';
+import { iconsMap } from '../Icons';
 
 const styles = StyleSheet.create({
 	view: {
@@ -44,103 +47,85 @@ const styles = StyleSheet.create({
 		color: '#888'
 	},
 	serverItem: {
-		flex: 1,
 		flexDirection: 'row',
-		// justifyContent: 'center',
 		alignItems: 'center',
 		backgroundColor: '#fff',
 		padding: 14
 	},
-
 	listItem: {
-		color: '#666', flexGrow: 1, lineHeight: 30
+		color: '#666',
+		flexGrow: 1,
+		lineHeight: 30
 	},
 	serverChecked: {
 		flexGrow: 0
 	}
 });
 
-const zeroconf = new Zeroconf();
-
-
 @connect(state => ({
 	server: state.server.server,
 	login: state.login,
 	connected: state.meteor.connected
 }), dispatch => ({
-	selectServer: server => dispatch(setServer(server))
+	selectServer: server => dispatch(selectServer(server))
 }))
-export default class ListServerView extends React.Component {
+/** @extends React.Component */
+export default class ListServerView extends LoggedView {
 	static propTypes = {
-		navigation: PropTypes.object.isRequired,
+		navigator: PropTypes.object,
 		login: PropTypes.object.isRequired,
 		selectServer: PropTypes.func.isRequired,
-		connected: PropTypes.bool.isRequired,
 		server: PropTypes.string
 	}
 
 	constructor(props) {
-		super(props);
+		super('ListServerView', props);
 		this.state = {
 			sections: []
 		};
-		this.redirected = false;
-		realm.addListener('change', this.updateState);
+		this.data = database.databases.serversDB.objects('servers');
+		this.data.addListener(this.updateState);
+		props.navigator.setOnNavigatorEvent(this.onNavigatorEvent.bind(this));
 	}
 
-	componentWillMount() {
-		zeroconf.on('update', this.updateState);
-
-		zeroconf.scan('http', 'tcp', 'local.');
-
-		this.state = this.getState();
+	async componentWillMount() {
+		this.props.navigator.setButtons({
+			rightButtons: [{
+				id: 'addServer',
+				icon: iconsMap.add
+			}]
+		});
 	}
 
-	componentDidUpdate() {
-		if (this.props.connected &&
-			this.props.server &&
-			!this.props.login.token &&
-			!this.redirected) {
-			this.redirected = true;
-			this.props.navigation.navigate('Login');
-		} else if (!this.props.connected) {
-			this.redirected = false;
-		}
+	componentDidMount() {
+		this.updateState();
+		this.jumpToSelectedServer();
 	}
 
 	componentWillUnmount() {
-		zeroconf.stop();
-		realm.removeListener('change', this.updateState);
-		zeroconf.removeListener('update', this.updateState);
+		this.data.removeAllListeners();
+	}
+
+	onNavigatorEvent(event) {
+		if (event.type === 'NavBarButtonPress') {
+			if (event.id === 'addServer') {
+				this.props.navigator.push({
+					screen: 'NewServerView',
+					title: I18n.t('New_Server')
+				});
+			}
+		}
 	}
 
 	onPressItem = (item) => {
-		this.props.selectServer(item.id);
+		this.selectAndNavigateTo(item.id);
 	}
 
 	getState = () => {
 		const sections = [{
-			title: 'My servers',
-			data: realm.objects('servers')
+			title: I18n.t('My_servers'),
+			data: this.data
 		}];
-
-		this.state.nearBy = zeroconf.getServices();
-		if (this.state.nearBy) {
-			const nearBy = Object.keys(this.state.nearBy)
-				.filter(key => this.state.nearBy[key].addresses);
-			if (nearBy.length) {
-				sections.push({
-					title: 'Nearby',
-					data: nearBy.map((key) => {
-						const server = this.state.nearBy[key];
-						const address = `http://${ server.addresses[0] }:${ server.port }`;
-						return {
-							id: address
-						};
-					})
-				});
-			}
-		}
 
 		return {
 			...this.state,
@@ -148,29 +133,55 @@ export default class ListServerView extends React.Component {
 		};
 	};
 
+	openLogin = (server) => {
+		this.props.navigator.push({
+			screen: 'LoginSignupView',
+			title: server
+		});
+	}
+
+	selectAndNavigateTo = (server) => {
+		this.props.selectServer(server);
+		this.openLogin(server);
+	}
+
+	jumpToSelectedServer() {
+		if (this.props.server && !this.props.login.isRegistering) {
+			setTimeout(() => {
+				this.openLogin(this.props.server);
+			}, 1000);
+		}
+	}
+
 	updateState = () => {
 		this.setState(this.getState());
 	}
 
 	renderItem = ({ item }) => (
-
-		<View style={styles.serverItem}>
-			<Text
-				style={[styles.listItem]}
-				onPress={() => { this.onPressItem(item); }}
-			>
-				{item.id}
-			</Text>
-			<Fade visible={this.props.server === item.id}>
-				<Icon
-					iconSize={24}
-					size={24}
-					style={styles.serverChecked}
-					name='ios-checkmark-circle-outline'
-				/>
-			</Fade>
-		</View>
+		<Touch
+			underlayColor='#ccc'
+			accessibilityTraits='button'
+			onPress={() => { this.onPressItem(item); }}
+		>
+			<View style={styles.serverItem}>
+				<Text
+					style={[styles.listItem]}
+					adjustsFontSizeToFit
+				>
+					{item.id}
+				</Text>
+				<Fade visible={this.props.server === item.id}>
+					<Icon
+						iconSize={24}
+						size={24}
+						style={styles.serverChecked}
+						name='ios-checkmark-circle-outline'
+					/>
+				</Fade>
+			</View>
+		</Touch>
 	);
+
 
 	renderSectionHeader = ({ section }) => (
 		<Text style={styles.headerStyle}>{section.title}</Text>
@@ -182,8 +193,7 @@ export default class ListServerView extends React.Component {
 
 	render() {
 		return (
-			<View style={styles.view}>
-				<Banner />
+			<View style={styles.view} testID='list-server-view'>
 				<SectionList
 					style={styles.list}
 					sections={this.state.sections}

@@ -18,7 +18,7 @@ jobs:
           name: Install NPM modules
           command: |
             npm install
-            npm install codecov
+            # npm install codecov
 
       - run:
           name: Lint
@@ -28,12 +28,58 @@ jobs:
       - run:
           name: Test
           command: |
-            npm test
+            npm run test
 
       - run:
           name: Codecov
           command: |
             npx codecov
+
+  e2e-test:
+    macos:
+      xcode: "9.0"
+
+    environment:
+      BASH_ENV: "~/.nvm/nvm.sh"
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install Node 8
+          command: |
+            curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.6/install.sh | bash
+            source ~/.nvm/nvm.sh
+            # https://github.com/creationix/nvm/issues/1394
+            set +e
+            nvm install 8
+
+      - run:
+          name: Install appleSimUtils
+          command: |
+            brew update
+            brew tap wix/brew
+            brew install applesimutils
+
+      - run:
+          name: Install NPM modules
+          command: |
+            rm -rf node_modules
+            npm install
+            npm install -g detox-cli
+
+      - run:
+          name: Build
+          command: |
+            detox build
+
+      - run:
+          name: Test
+          command: |
+            detox test
+
+      - store_artifacts:
+          path: /tmp/screenshots
 
   android-build:
     <<: *defaults
@@ -41,8 +87,8 @@ jobs:
       - image: circleci/android:api-26-alpha
 
     environment:
-      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError"
-      JVM_OPTS: -Xmx2048m
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"
+      JVM_OPTS: -Xmx4096m
       TERM: dumb
       BASH_ENV: "~/.nvm/nvm.sh"
 
@@ -72,12 +118,22 @@ jobs:
           command: |
             cd android
 
-            echo $KEYSTORE_BASE64 | base64 --decode > ./app/$KEYSTORE
-            echo -e "KEYSTORE=$KEYSTORE" > ./gradle.properties
-            echo -e "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> ./gradle.properties
-            echo -e "KEY_ALIAS=$KEY_ALIAS" >> ./gradle.properties
-            echo -e "KEY_PASSWORD=$KEYSTORE_PASSWORD" >> ./gradle.properties
+            echo -e "" > ./gradle.properties
+            echo -e "android.enableAapt2=false" >> ./gradle.properties
+
+            if [[ $KEYSTORE ]]; then
+              echo $KEYSTORE_BASE64 | base64 --decode > ./app/$KEYSTORE
+              echo -e "KEYSTORE=$KEYSTORE" >> ./gradle.properties
+              echo -e "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> ./gradle.properties
+              echo -e "KEY_ALIAS=$KEY_ALIAS" >> ./gradle.properties
+              echo -e "KEY_PASSWORD=$KEYSTORE_PASSWORD" >> ./gradle.properties
+            fi
+
             echo -e "VERSIONCODE=$CIRCLE_BUILD_NUM" >> ./gradle.properties
+
+            echo -e "" > ./app/fabric.properties
+            echo -e "apiKey=$FABRIC_KEY" >> ./app/fabric.properties
+            echo -e "apiSecret=$FABRIC_SECRET" >> ./app/fabric.properties
 
       - run:
           name: Install Android Depedencies
@@ -89,7 +145,11 @@ jobs:
           name: Build Android App
           command: |
             cd android
-            ./gradlew assembleRelease
+            if [[ $KEYSTORE ]]; then
+              ./gradlew assembleRelease
+            else
+              ./gradlew assembleDebug
+            fi
 
             mkdir -p /tmp/build
 
@@ -110,7 +170,7 @@ jobs:
 
   ios-build:
     macos:
-      xcode: "8.3.3"
+      xcode: "9.0"
 
     environment:
       BASH_ENV: "~/.nvm/nvm.sh"
@@ -137,8 +197,8 @@ jobs:
       - run:
           name: Install NPM modules
           command: |
+            rm -rf node_modules
             npm install
-            npm install react-native
 
       - run:
           name: Fix known build error
@@ -154,19 +214,29 @@ jobs:
           command: |
             cd ios
             agvtool new-version -all $CIRCLE_BUILD_NUM
-            fastlane ios build
+            /usr/libexec/PlistBuddy -c "Set Fabric:APIKey $FABRIC_KEY" ./RocketChatRN/Info.plist
+            echo -e "./Fabric.framework/run $FABRIC_KEY $FABRIC_SECRET" > ./RocketChatRN/Fabric.sh
+
+            if [[ $MATCH_KEYCHAIN_NAME ]]; then
+              fastlane ios release
+            else
+              export MATCH_KEYCHAIN_NAME="temp"
+              export MATCH_KEYCHAIN_PASSWORD="temp"
+              fastlane ios build
+            fi
 
       - store_artifacts:
           path: ios/RocketChatRN.ipa
 
       - persist_to_workspace:
-          root: ios
+          root: .
           paths:
-            - RocketChatRN.ipa
+            - ios/*.ipa
+            - ios/fastlane/report.xml
 
   ios-testflight:
     macos:
-      xcode: "8.3.3"
+      xcode: "9.0"
 
     steps:
       - checkout
@@ -185,29 +255,32 @@ jobs:
           name: Fastlane Tesflight Upload
           command: |
             cd ios
-            fastlane pilot upload
+            fastlane pilot upload --ipa ios/RocketChatRN.ipa --changelog "$(sh ../.circleci/changelog.sh)"
 
 workflows:
   version: 2
   build-and-test:
     jobs:
       - lint-testunit
+      - e2e-test:
+          requires:
+            - lint-testunit
 
       - ios-build:
           requires:
             - lint-testunit
-      - ios-hold-testflight:
-          type: approval
+      - ios-testflight:
           requires:
             - ios-build
           filters:
             branches:
               only:
+                - beta
                 - develop
                 - master
-      - ios-testflight:
-          requires:
-            - ios-hold-testflight
+      # - ios-testflight:
+      #     requires:
+      #       - ios-hold-testflight
 
       - android-build:
           requires:

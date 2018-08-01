@@ -1,14 +1,18 @@
 import { AsyncStorage } from 'react-native';
-import { take, put, call, takeEvery, takeLatest, select, all } from 'redux-saga/effects';
+import { delay } from 'redux-saga';
+import { put, call, take, takeLatest, select, all } from 'redux-saga/effects';
+
 import * as types from '../actions/actionsTypes';
+import { appStart } from '../actions';
 import {
-	loginRequest,
-	loginSubmit,
+	// loginRequest,
+	// loginSubmit,
 	registerRequest,
-	loginSuccess,
+	registerIncomplete,
+	// loginSuccess,
 	loginFailure,
-	setToken,
-	logout,
+	// logout,
+	// setToken,
 	registerSuccess,
 	setUsernameRequest,
 	setUsernameSuccess,
@@ -16,95 +20,43 @@ import {
 	forgotPasswordFailure
 } from '../actions/login';
 import RocketChat from '../lib/rocketchat';
+import log from '../utils/log';
+import I18n from '../i18n';
 
-const TOKEN_KEY = 'reactnativemeteor_usertoken';
 const getUser = state => state.login;
 const getServer = state => state.server.server;
-const loginCall = args => (args.resume ? RocketChat.login(args) : RocketChat.loginWithPassword(args));
+const getIsConnected = state => state.meteor.connected;
+
+const loginCall = args => RocketChat.loginWithPassword(args);
 const registerCall = args => RocketChat.register(args);
 const setUsernameCall = args => RocketChat.setUsername(args);
+const loginSuccessCall = () => RocketChat.loginSuccess();
 const logoutCall = args => RocketChat.logout(args);
 const forgotPasswordCall = args => RocketChat.forgotPassword(args);
 
-const getToken = function* getToken() {
-	const currentServer = yield select(getServer);
-	const user = yield call([AsyncStorage, 'getItem'], `${ TOKEN_KEY }-${ currentServer }`);
-	if (user) {
-		try {
-			yield put(setToken(JSON.parse(user)));
-			yield call([AsyncStorage, 'setItem'], TOKEN_KEY, JSON.parse(user).token || '');
-			return JSON.parse(user);
-		} catch (e) {
-			console.log('getTokenerr', e);
-		}
-	} else {
-		yield put(setToken());
-	}
-};
-
-const handleLoginWhenServerChanges = function* handleLoginWhenServerChanges() {
-	// do {
+const handleLoginSuccess = function* handleLoginSuccess() {
 	try {
-		yield take(types.METEOR.SUCCESS);
-		yield call(getToken);
-		// const { navigator } = yield select(state => state);
-
-		const user = yield select(getUser);
-		if (user.token) {
-			yield put(loginRequest({ resume: user.token }));
-			// console.log('AEEEEEEEEOOOOO');
-			// // wait for a response
-			// const { error } = yield race({
-			// 	success: take(types.LOGIN.SUCCESS),
-			// 	error: take(types.LOGIN.FAILURE)
-			// });
-			// console.log('AEEEEEEEEOOOOO', error);
-			// if (!error) {
-			// 	navigator.resetTo({
-			// 		screen: 'Rooms'
-			// 	});
-			// }
-		}
-		// navigator.resetTo({
-		// 	screen: 'Rooms'
-		// });
-	} catch (e) {
-		console.log(e);
-	}
-	// } while (true);
-};
-
-const saveToken = function* saveToken() {
-	const [server, user] = yield all([select(getServer), select(getUser)]);
-	yield AsyncStorage.setItem(TOKEN_KEY, user.token);
-	yield AsyncStorage.setItem(`${ TOKEN_KEY }-${ server }`, JSON.stringify(user));
-};
-
-const handleLoginRequest = function* handleLoginRequest({ credentials }) {
-	try {
-		const response = yield call(loginCall, credentials);
-		yield put(loginSuccess(response));
-	} catch (err) {
-		if (err.error === 403) {
-			yield put(logout());
+		const [server, user] = yield all([select(getServer), select(getUser)]);
+		yield AsyncStorage.setItem(RocketChat.TOKEN_KEY, user.token);
+		yield AsyncStorage.setItem(`${ RocketChat.TOKEN_KEY }-${ server }`, JSON.stringify(user));
+		// const token = yield AsyncStorage.getItem('pushId');
+		// if (token) {
+		// 	yield RocketChat.registerPushToken(user.user.id, token);
+		// }
+		yield RocketChat.registerPushToken(user.user.id);
+		if (!user.user.username || user.isRegistering) {
+			yield put(registerIncomplete());
 		} else {
-			yield put(loginFailure(err));
+			yield delay(300);
+			yield put(appStart('inside'));
 		}
+	} catch (e) {
+		log('handleLoginSuccess', e);
 	}
-};
-
-const handleLoginSubmit = function* handleLoginSubmit({ credentials }) {
-	yield put(loginRequest(credentials));
 };
 
 const handleRegisterSubmit = function* handleRegisterSubmit({ credentials }) {
-	// put a login request
 	yield put(registerRequest(credentials));
-	// wait for a response
-	// yield race({
-	// 	success: take(types.LOGIN.REGISTER_SUCCESS),
-	// 	error: take(types.LOGIN.FAILURE)
-	// });
 };
 
 const handleRegisterRequest = function* handleRegisterRequest({ credentials }) {
@@ -117,10 +69,14 @@ const handleRegisterRequest = function* handleRegisterRequest({ credentials }) {
 };
 
 const handleRegisterSuccess = function* handleRegisterSuccess({ credentials }) {
-	yield put(loginSubmit({
-		username: credentials.email,
-		password: credentials.pass
-	}));
+	try {
+		yield call(loginCall, {
+			username: credentials.email,
+			password: credentials.pass
+		});
+	} catch (err) {
+		yield put(loginFailure(err));
+	}
 };
 
 const handleSetUsernameSubmit = function* handleSetUsernameSubmit({ credentials }) {
@@ -131,6 +87,7 @@ const handleSetUsernameRequest = function* handleSetUsernameRequest({ credential
 	try {
 		yield call(setUsernameCall, { credentials });
 		yield put(setUsernameSuccess());
+		yield call(loginSuccessCall);
 	} catch (err) {
 		yield put(loginFailure(err));
 	}
@@ -138,7 +95,19 @@ const handleSetUsernameRequest = function* handleSetUsernameRequest({ credential
 
 const handleLogout = function* handleLogout() {
 	const server = yield select(getServer);
-	yield call(logoutCall, { server });
+	if (server) {
+		try {
+			yield put(appStart('outside'));
+			yield delay(300);
+			yield call(logoutCall, { server });
+		} catch (e) {
+			log('handleLogout', e);
+		}
+	}
+};
+
+const handleRegisterIncomplete = function* handleRegisterIncomplete() {
+	yield put(appStart('outside'));
 };
 
 const handleForgotPasswordRequest = function* handleForgotPasswordRequest({ email }) {
@@ -150,17 +119,43 @@ const handleForgotPasswordRequest = function* handleForgotPasswordRequest({ emai
 	}
 };
 
+const watchLoginOpen = function* watchLoginOpen() {
+	try {
+		const isConnected = yield select(getIsConnected);
+		if (!isConnected) {
+			yield take(types.METEOR.SUCCESS);
+		}
+		const sub = yield RocketChat.subscribe('meteor.loginServiceConfiguration');
+		yield take(types.LOGIN.CLOSE);
+		yield sub.unsubscribe().catch(err => console.warn(err));
+	} catch (e) {
+		log('watchLoginOpen', e);
+	}
+};
+
+// eslint-disable-next-line require-yield
+const handleSetUser = function* handleSetUser(params) {
+	const [server, user] = yield all([select(getServer), select(getUser)]);
+	if (params.language) {
+		I18n.locale = params.language;
+	}
+	yield AsyncStorage.setItem(`${ RocketChat.TOKEN_KEY }-${ server }`, JSON.stringify(user));
+};
+
 const root = function* root() {
-	yield takeEvery(types.SERVER.CHANGED, handleLoginWhenServerChanges);
-	yield takeLatest(types.LOGIN.REQUEST, handleLoginRequest);
-	yield takeLatest(types.LOGIN.SUCCESS, saveToken);
-	yield takeLatest(types.LOGIN.SUBMIT, handleLoginSubmit);
+	// yield takeLatest(types.METEOR.SUCCESS, handleLoginWhenServerChanges);
+	// yield takeLatest(types.LOGIN.REQUEST, handleLoginRequest);
+	yield takeLatest(types.LOGIN.SUCCESS, handleLoginSuccess);
+	// yield takeLatest(types.LOGIN.SUBMIT, handleLoginSubmit);
 	yield takeLatest(types.LOGIN.REGISTER_REQUEST, handleRegisterRequest);
 	yield takeLatest(types.LOGIN.REGISTER_SUBMIT, handleRegisterSubmit);
 	yield takeLatest(types.LOGIN.REGISTER_SUCCESS, handleRegisterSuccess);
+	yield takeLatest(types.LOGIN.REGISTER_INCOMPLETE, handleRegisterIncomplete);
 	yield takeLatest(types.LOGIN.SET_USERNAME_SUBMIT, handleSetUsernameSubmit);
 	yield takeLatest(types.LOGIN.SET_USERNAME_REQUEST, handleSetUsernameRequest);
 	yield takeLatest(types.LOGOUT, handleLogout);
 	yield takeLatest(types.FORGOT_PASSWORD.REQUEST, handleForgotPasswordRequest);
+	yield takeLatest(types.LOGIN.OPEN, watchLoginOpen);
+	yield takeLatest(types.USER.SET, handleSetUser);
 };
 export default root;

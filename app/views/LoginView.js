@@ -1,144 +1,166 @@
 import React from 'react';
-
-import Spinner from 'react-native-loading-spinner-overlay';
-
 import PropTypes from 'prop-types';
-import { Keyboard, Text, TextInput, View, TouchableOpacity } from 'react-native';
+import { Keyboard, Text, ScrollView, View } from 'react-native';
 import { connect } from 'react-redux';
-import { bindActionCreators } from 'redux';
-// import * as actions from '../actions';
-import * as loginActions from '../actions/login';
+import { Answers } from 'react-native-fabric';
+
+import RocketChat from '../lib/rocketchat';
 import KeyboardView from '../presentation/KeyboardView';
-// import { Keyboard } from 'react-native'
-
+import TextInput from '../containers/TextInput';
+import Button from '../containers/Button';
+import Loading from '../containers/Loading';
 import styles from './Styles';
+import scrollPersistTaps from '../utils/scrollPersistTaps';
+import { showToast } from '../utils/info';
+import { COLOR_BUTTON_PRIMARY } from '../constants/colors';
+import LoggedView from './View';
+import I18n from '../i18n';
 
-class LoginView extends React.Component {
+@connect(state => ({
+	server: state.server.server,
+	failure: state.login.failure,
+	isFetching: state.login.isFetching,
+	reason: state.login.error && state.login.error.reason,
+	error: state.login.error && state.login.error.error
+}), () => ({
+	loginSubmit: params => RocketChat.loginWithPassword(params)
+}))
+/** @extends React.Component */
+export default class LoginView extends LoggedView {
 	static propTypes = {
+		navigator: PropTypes.object,
 		loginSubmit: PropTypes.func.isRequired,
+		login: PropTypes.object,
+		server: PropTypes.string,
+		error: PropTypes.string,
 		Accounts_EmailOrUsernamePlaceholder: PropTypes.string,
 		Accounts_PasswordPlaceholder: PropTypes.string,
-		login: PropTypes.object,
-		navigation: PropTypes.object.isRequired
+		failure: PropTypes.bool,
+		isFetching: PropTypes.bool,
+		reason: PropTypes.string
 	}
 
-	static navigationOptions = () => ({
-		title: 'Login'
-	});
-
 	constructor(props) {
-		super(props);
-
+		super('LoginView', props);
 		this.state = {
 			username: '',
 			password: ''
 		};
 	}
 
-	submit = () => {
+	submit = async() => {
 		const {	username, password, code } = this.state;
 		if (username.trim() === '' || password.trim() === '') {
+			showToast(I18n.t('Email_or_password_field_is_empty'));
 			return;
 		}
-
-		this.props.loginSubmit({	username, password, code });
 		Keyboard.dismiss();
+
+		try {
+			await this.props.loginSubmit({ username, password, code });
+			Answers.logLogin('Email', true, { server: this.props.server });
+		} catch (error) {
+			console.warn('LoginView submit', error);
+		}
 	}
 
 	register = () => {
-		this.props.navigation.navigate('Register');
+		this.props.navigator.push({
+			screen: 'RegisterView',
+			title: this.props.server,
+			backButtonTitle: I18n.t('Login')
+		});
 	}
 
 	forgotPassword = () => {
-		this.props.navigation.navigate('ForgotPassword');
+		this.props.navigator.push({
+			screen: 'ForgotPasswordView',
+			title: I18n.t('Forgot_Password'),
+			backButtonTitle: I18n.t('Login')
+		});
 	}
 
 	renderTOTP = () => {
-		if (this.props.login.errorMessage && this.props.login.errorMessage.error === 'totp-required') {
+		if (/totp/ig.test(this.props.error)) {
 			return (
 				<TextInput
-					ref={ref => this.codeInput = ref}
-					style={styles.input}
+					inputRef={ref => this.codeInput = ref}
+					label={I18n.t('Code')}
 					onChangeText={code => this.setState({ code })}
+					placeholder={I18n.t('Code')}
 					keyboardType='numeric'
-					autoCorrect={false}
 					returnKeyType='done'
 					autoCapitalize='none'
 					onSubmitEditing={this.submit}
-					placeholder='Code'
 				/>
 			);
 		}
+		return null;
 	}
 
-	// {this.props.login.isFetching && <Text> LOGANDO</Text>}
 	render() {
 		return (
 			<KeyboardView
 				contentContainerStyle={styles.container}
 				keyboardVerticalOffset={128}
+				key='login-view'
 			>
-				<View style={styles.loginView}>
-					<View style={styles.formContainer}>
+				<ScrollView {...scrollPersistTaps} contentContainerStyle={styles.containerScrollView}>
+					<View testID='login-view'>
+						<Text style={[styles.loginText, styles.loginTitle]}>Login</Text>
 						<TextInput
-							style={styles.input_white}
-							onChangeText={username => this.setState({ username })}
+							label={I18n.t('Username')}
+							placeholder={this.props.Accounts_EmailOrUsernamePlaceholder || I18n.t('Username')}
 							keyboardType='email-address'
-							autoCorrect={false}
 							returnKeyType='next'
-							autoCapitalize='none'
-							underlineColorAndroid='transparent'
+							iconLeft='at'
+							onChangeText={username => this.setState({ username })}
 							onSubmitEditing={() => { this.password.focus(); }}
-							placeholder={this.props.Accounts_EmailOrUsernamePlaceholder || 'Email or username'}
+							testID='login-view-email'
 						/>
+
 						<TextInput
-							ref={(e) => { this.password = e; }}
-							style={styles.input_white}
-							onChangeText={password => this.setState({ password })}
-							secureTextEntry
-							autoCorrect={false}
+							inputRef={(e) => { this.password = e; }}
+							label={I18n.t('Password')}
+							placeholder={this.props.Accounts_PasswordPlaceholder || I18n.t('Password')}
 							returnKeyType='done'
-							autoCapitalize='none'
-							underlineColorAndroid='transparent'
+							iconLeft='key-variant'
+							secureTextEntry
 							onSubmitEditing={this.submit}
-							placeholder={this.props.Accounts_PasswordPlaceholder || 'Password'}
+							onChangeText={password => this.setState({ password })}
+							testID='login-view-password'
 						/>
 
 						{this.renderTOTP()}
 
-						<TouchableOpacity style={styles.buttonContainer}>
-							<Text style={styles.button} onPress={this.submit}>LOGIN</Text>
-						</TouchableOpacity>
+						<View style={styles.alignItemsFlexStart}>
+							<Button
+								title={I18n.t('Login')}
+								type='primary'
+								onPress={this.submit}
+								testID='login-view-submit'
+							/>
+							<Text
+								style={[styles.loginText, { marginTop: 10 }]}
+								testID='login-view-register'
+								onPress={() => this.register()}
+							>{I18n.t('New_in_RocketChat_question_mark')} &nbsp;
+								<Text style={{ color: COLOR_BUTTON_PRIMARY }}>{I18n.t('Sign_Up')}
+								</Text>
+							</Text>
+							<Text
+								style={[styles.loginText, { marginTop: 20, fontSize: 13 }]}
+								onPress={() => this.forgotPassword()}
+								testID='login-view-forgot-password'
+							>{I18n.t('Forgot_password')}
+							</Text>
+						</View>
 
-						<TouchableOpacity style={styles.buttonContainer}>
-							<Text style={styles.button} onPress={this.register}>REGISTER</Text>
-						</TouchableOpacity>
-
-						<TouchableOpacity style={styles.buttonContainer} onPress={this.forgotPassword}>
-							<Text style={styles.button}>FORGOT MY PASSWORD</Text>
-						</TouchableOpacity>
-
-						{this.props.login.failure && <Text style={styles.error}>{this.props.login.error.reason}</Text>}
+						{this.props.failure ? <Text style={styles.error}>{this.props.reason}</Text> : null}
+						<Loading visible={this.props.isFetching} />
 					</View>
-					<Spinner visible={this.props.login.isFetching} textContent={'Loading...'} textStyle={{ color: '#FFF' }} />
-				</View>
+				</ScrollView>
 			</KeyboardView>
 		);
 	}
 }
-
-function mapStateToProps(state) {
-	// console.log(Object.keys(state));
-	return {
-		server: state.server.server,
-		Accounts_EmailOrUsernamePlaceholder: state.settings.Accounts_EmailOrUsernamePlaceholder,
-		Accounts_PasswordPlaceholder: state.settings.Accounts_PasswordPlaceholder,
-		login: state.login
-	};
-}
-
-function mapDispatchToProps(dispatch) {
-	return bindActionCreators(loginActions, dispatch);
-}
-
-export default connect(mapStateToProps, mapDispatchToProps)(LoginView);

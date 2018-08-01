@@ -1,24 +1,45 @@
-import { put, takeEvery, call, takeLatest, race, take } from 'redux-saga/effects';
+import { put, call, takeLatest } from 'redux-saga/effects';
 import { delay } from 'redux-saga';
 import { AsyncStorage } from 'react-native';
-// import { Navigation } from 'react-native-navigation';
+
+import { NavigationActions } from '../Navigation';
 import { SERVER } from '../actions/actionsTypes';
-import { connectRequest, disconnect } from '../actions/connect';
-import { changedServer, serverSuccess, serverFailure, serverRequest } from '../actions/server';
+import * as actions from '../actions';
+import { connectRequest } from '../actions/connect';
+import { serverSuccess, serverFailure, selectServer } from '../actions/server';
+import { setRoles } from '../actions/roles';
 import RocketChat from '../lib/rocketchat';
-import realm from '../lib/realm';
+import database from '../lib/realm';
+import log from '../utils/log';
+import I18n from '../i18n';
 
 const validate = function* validate(server) {
 	return yield RocketChat.testServer(server);
 };
 
-const selectServer = function* selectServer({ server }) {
-	yield put(disconnect());
-	yield put(changedServer(server));
-	yield call([AsyncStorage, 'setItem'], 'currentServer', server);
-	yield put(connectRequest(server));
-};
+const handleSelectServer = function* handleSelectServer({ server }) {
+	try {
+		yield database.setActiveDB(server);
 
+		// yield RocketChat.disconnect();
+
+		yield call([AsyncStorage, 'setItem'], 'currentServer', server);
+		// yield AsyncStorage.removeItem(RocketChat.TOKEN_KEY);
+		const settings = database.objects('settings');
+		yield put(actions.setAllSettings(RocketChat.parseSettings(settings.slice(0, settings.length))));
+		const emojis = database.objects('customEmojis');
+		yield put(actions.setCustomEmojis(RocketChat.parseEmojis(emojis.slice(0, emojis.length))));
+		const roles = database.objects('roles');
+		yield put(setRoles(roles.reduce((result, role) => {
+			result[role._id] = role.description;
+			return result;
+		}, {})));
+
+		yield put(connectRequest());
+	} catch (e) {
+		log('handleSelectServer', e);
+	}
+};
 
 const validateServer = function* validateServer({ server }) {
 	try {
@@ -26,29 +47,27 @@ const validateServer = function* validateServer({ server }) {
 		yield call(validate, server);
 		yield put(serverSuccess());
 	} catch (e) {
-		console.log(e);
+		console.warn('validateServer', e);
 		yield put(serverFailure(e));
 	}
 };
 
 const addServer = function* addServer({ server }) {
-	yield put(serverRequest(server));
-
-	const { error } = yield race({
-		error: take(SERVER.FAILURE),
-		success: take(SERVER.SUCCESS)
-	});
-	if (!error) {
-		realm.write(() => {
-			realm.create('servers', { id: server, current: false }, true);
+	try {
+		yield put(actions.appStart('outside'));
+		yield call(NavigationActions.resetTo, { screen: 'ListServerView', title: I18n.t('Servers') });
+		database.databases.serversDB.write(() => {
+			database.databases.serversDB.create('servers', { id: server, current: false }, true);
 		});
+		yield put(selectServer(server));
+	} catch (e) {
+		log('addServer', e);
 	}
 };
 
-
 const root = function* root() {
 	yield takeLatest(SERVER.REQUEST, validateServer);
-	yield takeEvery(SERVER.SELECT, selectServer);
-	yield takeEvery(SERVER.ADD, addServer);
+	yield takeLatest(SERVER.SELECT, handleSelectServer);
+	yield takeLatest(SERVER.ADD, addServer);
 };
 export default root;

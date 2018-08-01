@@ -6,29 +6,36 @@ const initialState = {
 	isRegistering: false,
 	token: '',
 	user: {},
-	error: ''
+	error: '',
+	services: {}
 };
 
 export default function login(state = initialState, action) {
 	switch (action.type) {
+		case types.APP.INIT:
+			return initialState;
 		case types.LOGIN.REQUEST:
-			return { ...state,
+			return {
+				...state,
 				isFetching: true,
 				isAuthenticated: false,
+				isRegistering: false,
 				failure: false,
 				error: ''
 			};
 		case types.LOGIN.SUCCESS:
-			return { ...state,
+			return {
+				...state,
 				isFetching: false,
 				isAuthenticated: true,
-				user: action.user,
+				user: { ...state.user, ...action.user },
 				token: action.user.token,
 				failure: false,
 				error: ''
 			};
 		case types.LOGIN.FAILURE:
-			return { ...state,
+			return {
+				...state,
 				isFetching: false,
 				isAuthenticated: false,
 				failure: true,
@@ -37,9 +44,15 @@ export default function login(state = initialState, action) {
 		case types.LOGOUT:
 			return initialState;
 		case types.LOGIN.SET_TOKEN:
-			return { ...state,
+			return {
+				...state,
 				token: action.token,
 				user: action.user
+			};
+		case types.LOGIN.RESTORE_TOKEN:
+			return {
+				...state,
+				token: action.token
 			};
 		case types.LOGIN.REGISTER_SUBMIT:
 			return {
@@ -69,6 +82,11 @@ export default function login(state = initialState, action) {
 				isFetching: false,
 				isRegistering: false
 			};
+		case types.LOGIN.REGISTER_INCOMPLETE:
+			return {
+				...state,
+				isRegistering: true
+			};
 		case types.FORGOT_PASSWORD.INIT:
 			return initialState;
 		case types.FORGOT_PASSWORD.REQUEST:
@@ -90,6 +108,27 @@ export default function login(state = initialState, action) {
 				isFetching: false,
 				failure: true,
 				error: action.err
+			};
+		case types.USER.SET:
+			return {
+				...state,
+				user: {
+					...state.user,
+					...action
+				}
+			};
+		case types.LOGIN.SET_SERVICES:
+			return {
+				...state,
+				services: {
+					...state.services,
+					...action.data
+				}
+			};
+		case types.LOGIN.REMOVE_SERVICES:
+			return {
+				...state,
+				services: {}
 			};
 		default:
 			return state;

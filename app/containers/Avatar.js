@@ -1,12 +1,13 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { StyleSheet, Text, View } from 'react-native';
-import { CachedImage } from 'react-native-img-cache';
+import { connect } from 'react-redux';
+import { StyleSheet, Text, View, ViewPropTypes } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import avatarInitialsAndColor from '../utils/avatarInitialsAndColor';
 
 const styles = StyleSheet.create({
 	iconContainer: {
-		overflow: 'hidden',
+		// overflow: 'hidden',
 		justifyContent: 'center',
 		alignItems: 'center'
 	},
@@ -18,9 +19,87 @@ const styles = StyleSheet.create({
 	}
 });
 
-class Avatar extends React.PureComponent {
+@connect(state => ({
+	baseUrl: state.settings.Site_Url || state.server ? state.server.server : ''
+}))
+export default class Avatar extends React.PureComponent {
+	static propTypes = {
+		style: ViewPropTypes.style,
+		baseUrl: PropTypes.string,
+		text: PropTypes.string,
+		avatar: PropTypes.string,
+		size: PropTypes.number,
+		borderRadius: PropTypes.number,
+		type: PropTypes.string,
+		children: PropTypes.object,
+		forceInitials: PropTypes.bool
+	};
+	static defaultProps = {
+		text: '',
+		size: 25,
+		type: 'd',
+		borderRadius: 2,
+		forceInitials: false
+	};
+	state = { showInitials: true };
+
+	// componentDidMount() {
+	// 	const { text, type } = this.props;
+	// 	if (type === 'd') {
+	// 		this.users = this.userQuery(text);
+	// 		this.users.addListener(this.update);
+	// 		this.update();
+	// 	}
+	// }
+
+	// componentWillReceiveProps(nextProps) {
+	// 	if (nextProps.text !== this.props.text && nextProps.type === 'd') {
+	// 		if (this.users) {
+	// 			this.users.removeAllListeners();
+	// 		}
+	// 		this.users = this.userQuery(nextProps.text);
+	// 		this.users.addListener(this.update);
+	// 		this.update();
+	// 	}
+	// }
+
+	// componentWillUnmount() {
+	// 	if (this.users) {
+	// 		this.users.removeAllListeners();
+	// 	}
+	// }
+
+	// get avatarVersion() {
+	// 	// return (this.state.user && this.state.user.avatarVersion) || 0;
+	// 	return 0;
+	// }
+
+	/** FIXME: Workaround
+	 * While we don't have containers/components structure, this is breaking tests.
+	 * In that case, avatar would be a component, it would receive an `avatarVersion` param
+	 * and we would have a avatar container in charge of making queries.
+	 * Also, it would make possible to write unit tests like these.
+	*/
+	// userQuery = (username) => {
+	// 	if (database && database.databases && database.databases.activeDB) {
+	// 		return database.objects('users').filtered('username = $0', username);
+	// 	}
+	// 	return {
+	// 		addListener: () => {},
+	// 		removeAllListeners: () => {}
+	// 	};
+	// }
+
+	// update = () => {
+	// 	if (this.users.length) {
+	// 		this.setState({ user: this.users[0] });
+	// 	}
+	// }
+
 	render() {
-		const { text = '', size = 25, baseUrl, borderRadius = 5, style, avatar } = this.props;
+		const {
+			text, size, baseUrl, borderRadius, style, avatar, type, forceInitials
+		} = this.props;
 		const { initials, color } = avatarInitialsAndColor(`${ text }`);
 
 		const iconContainerStyle = {
@@ -31,7 +110,8 @@ class Avatar extends React.PureComponent {
 		};
 
 		const avatarInitialsStyle = {
-			fontSize: size / 2
+			fontSize: size / 1.6,
+			fontWeight: '800'
 		};
 
 		const avatarStyle = {
@@ -40,28 +120,35 @@ class Avatar extends React.PureComponent {
 			borderRadius
 		};
 
-		const uri = avatar || `${ baseUrl }/avatar/${ text }`;
-		const image = (avatar || baseUrl) && (
-			<CachedImage
-				style={[styles.avatar, avatarStyle]}
-				source={{ uri }}
-			/>
-		);
+		let image;
+
+		if (type === 'd' && !forceInitials) {
+			const uri = avatar || `${ baseUrl }/avatar/${ text }`;
+			image = uri ? (
+				<FastImage
+					style={[styles.avatar, avatarStyle]}
+					source={{
+						uri,
+						priority: FastImage.priority.high
+					}}
+				/>
+			) : null;
+		}
 
 		return (
 			<View style={[styles.iconContainer, iconContainerStyle, style]}>
-				<Text style={[styles.avatarInitials, avatarInitialsStyle]}>{initials}</Text>
+				{this.state.showInitials ?
+					<Text
+						style={[styles.avatarInitials, avatarInitialsStyle]}
+						allowFontScaling={false}
+					>
+						{initials}
+					</Text>
+					: null
+				}
 				{image}
-			</View>);
+				{this.props.children}
+			</View>
+		);
 	}
 }
-
-Avatar.propTypes = {
-	style: PropTypes.object,
-	baseUrl: PropTypes.string,
-	text: PropTypes.string.isRequired,
-	avatar: PropTypes.string,
-	size: PropTypes.number,
-	borderRadius: PropTypes.number
-};
-export default Avatar;

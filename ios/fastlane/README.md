@@ -12,9 +12,9 @@ xcode-select --install
 
 <table width="100%" >
 <tr>
-<th width="33%"><a href="http://brew.sh">Homebrew</a></td>
-<th width="33%">Installer Script</td>
-<th width="33%">RubyGems</td>
+<th width="33%"><a href="http://brew.sh">Homebrew</a></th>
+<th width="33%">Installer Script</th>
+<th width="33%">RubyGems</th>
 </tr>
 <tr>
 <td width="33%" align="center">macOS</td>
@@ -46,12 +46,12 @@ This will also make sure the profile is up to date
 ```
 fastlane ios release
 ```
-Deploy a new version to the App Store
+Build App for release
 ### ios build
 ```
 fastlane ios build
 ```
-Build App
+Build App for development
 
 ----
 

@@ -2,10 +2,14 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { View, Text, StyleSheet } from 'react-native';
 import moment from 'moment';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import Avatar from '../Avatar';
 
 const styles = StyleSheet.create({
 	username: {
-		fontWeight: 'bold'
+		color: '#000',
+		fontWeight: '400',
+		fontSize: 14
 	},
 	usernameView: {
 		flexDirection: 'row',
@@ -20,15 +24,38 @@ const styles = StyleSheet.create({
 	time: {
 		fontSize: 10,
 		color: '#888',
-		paddingLeft: 5
+		paddingLeft: 5,
+		fontWeight: '400'
+	},
+	edited: {
+		marginLeft: 5,
+		flexDirection: 'row',
+		alignItems: 'center'
 	}
 });
 
-export default class Message extends React.PureComponent {
+export default class User extends React.PureComponent {
 	static propTypes = {
 		item: PropTypes.object.isRequired,
 		Message_TimeFormat: PropTypes.string.isRequired,
 		onPress: PropTypes.func
+	}
+
+	renderEdited = (item) => {
+		if (!item.editedBy) {
+			return null;
+		}
+		return (
+			<View style={styles.edited}>
+				<Icon name='pencil-square-o' color='#888' size={10} />
+				<Avatar
+					style={{ marginLeft: 5 }}
+					text={item.editedBy.username}
+					size={20}
+					avatar={item.avatar}
+				/>
+			</View>
+		);
 	}
 
 	render() {
@@ -48,7 +75,9 @@ export default class Message extends React.PureComponent {
 				<Text onPress={this.props.onPress} style={styles.username}>
 					{username}
 				</Text>
-				{aliasUsername}<Text style={styles.time}>{time}</Text>
+				{aliasUsername}
+				<Text style={styles.time}>{time}</Text>
+				{this.renderEdited(item)}
 			</View>
 		);
 	}
